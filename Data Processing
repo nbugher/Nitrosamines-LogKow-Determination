@@ -1,0 +1,1541 @@
+import os
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+
+#Read File
+os.chdir('/Users/nbugher/MIT Dropbox/Nicolette Bugher/Plata Lab/Bugher/SRP/Chapter 4 (K estimation)')
+
+mdf1 = pd.ExcelFile("/Users/nbugher/MIT Dropbox/Nicolette Bugher/Plata Lab/Bugher/SRP/Chapter 4 (K estimation)/Python_File_Cleaned.xlsx")
+equilibration = pd.read_excel(mdf1, 'equilibration 011025')
+absorbance = pd.read_excel(mdf1, 'Abs')
+
+mdf_sf = pd.ExcelFile('/Users/nbugher/MIT Dropbox/Nicolette Bugher/Plata Lab/Bugher/SRP/Chapter 4 (K estimation)/Python_Linear_Regression_Shake_Flask.xlsx')
+NDMA_kow = pd.read_excel(mdf_sf,'NDMA')
+NMOR_kow = pd.read_excel(mdf_sf,'NMOR')
+NPIP_kow = pd.read_excel(mdf_sf,'NPIP')
+NDBA_kow = pd.read_excel(mdf_sf,'NDBA')
+NDMA_kalkw=pd.read_excel(mdf_sf,'NDMA hex')
+ci_plot = pd.read_excel(mdf_sf,'ci plots')
+
+
+#%% plot shake-flask linear regressions of Coctanol/Cwater
+
+####
+#### CHANGE NDMA_kow dataframe in model and in lmplot for each nitrosamines
+
+### get CI predictions to plot
+
+import statsmodels.formula.api as smf
+
+model2 = smf.ols('Co ~ Cw', data = NDBA_kow).fit()
+
+predictions = model2.get_prediction(ci_plot[['Cw']])
+
+predicted_values = predictions.predicted_mean
+predicted_values = pd.DataFrame(predicted_values)
+conf_int = predictions.conf_int()
+pred_int = predictions.summary_frame(alpha=0.05)
+pred_obs = predictions.se_obs
+pred_int['se_obs'] = pred_obs
+pred_int['test_value'] = ci_plot[['Cw']]
+print(pred_int)
+
+sns.set(rc = {'figure.figsize':(3.33,2.5),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1, style = 'white')
+
+figure, (ax1,ax2) = plt.subplots(2,2)
+
+sns.set_context("paper", rc={
+    "font.size": 10,
+    "axes.titlesize": 10,
+    "axes.labelsize": 10,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+    "legend.fontsize": 10})
+
+p1 = sns.lmplot(data = NDBA_kow, x = 'Cw', y = 'Co', fit_reg=True, ci=95, n_boot=1, ax = ax2,
+           scatter_kws={'color':'black', 'facecolor': 'none'}, line_kws={'color':'black', 'ls': '--', 'linewidth': 1}, height = 3.33, aspect =1)
+
+# plt.fill_between(data = pred_int, x='test_value', y1 = 'mean_ci_lower', y2='mean_ci_upper',
+#                   alpha = 0.5, color = 'grey', zorder=0)
+
+plt.ylim(0,10)
+plt.xlim(0,0.035)
+
+slope = round(model2.params[1],5)
+intercept = round(model2.params[0],5)
+rsquared = round(model2.rsquared,4)
+
+
+plt.text(0.001,8.8, f'y = {slope} + {intercept}', fontsize=10, color='black')
+plt.text(0.001,8, f'$R^{2}$ = {rsquared}', fontsize=10, color='black')
+
+#sns.scatterplot(data = pred_int, x = 'test_value' , y = 'mean_ci_lower')
+#sns.scatterplot(data = pred_int, x = 'test_value' , y = 'mean_ci_upper')
+
+plt.ylabel(r'$C_{octanol}$ (ug/mL)', fontsize = 10)
+plt.xlabel(r'$C_{water}$ (ug/mL)', fontsize = 10)
+
+
+#plt.savefig('NDMA_shakeflask_Kalkwater_regression.pdf', format='pdf', bbox_inches='tight')
+plt.show()
+
+print(model2.summary())
+
+#%% remove blanks
+
+#print to see null values in a final column
+
+print(equilibration['NDMA retained in water (%)'])
+
+#drop nan values and remove blanks
+
+equilibration.dropna(subset=['NDMA retained in water (%)'], inplace=True)
+y_error = equilibration.groupby('Shake time (minutes)')["NDMA retained in water (%)"].std()
+
+mean_vals = equilibration.groupby('Shake time (minutes)')["NDMA retained in water (%)"].mean()
+std_vals = equilibration.groupby('Shake time (minutes)')["NDMA retained in water (%)"].std()
+
+
+
+#%% Equilibration Plotting and Error Analysis
+
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+ 
+p2 = sns.scatterplot(data = equilibration, x = 'Shake time (minutes)', 
+                     y = 'NDMA retained in water (%)', edgecolor = 'black', 
+                     facecolor = 'none', linewidth =1, ax =ax, zorder=3)
+plt.ylim(0,1.1)
+plt.xlim(-2,100)
+
+#added shaded error region
+
+sorted_times = mean_vals.index.values
+sorted_means = mean_vals.values
+sorted_stds = std_vals.values
+
+plt.fill_between(
+    sorted_times,
+    sorted_means - sorted_stds,
+    sorted_means + sorted_stds,
+    color='grey',
+    alpha=0.2,
+    label='±1 SD'
+)
+
+# # add horizontal line at Co/Cw average
+# av_equ = [0.52]
+# plt.axhline(y= av_equ, color='grey', linestyle='--', label='Target Line')
+
+plt.plot(sorted_times, sorted_means, linestyle='--', color='grey', linewidth=2, label='Mean (dotted)')
+
+#add error bars
+
+# plt.errorbar(
+#     mean_vals.index, mean_vals.values, yerr=std_vals.values,
+#     fmt='o', color='black', capsize=3, label='Mean ± SD'
+# )
+
+# label and correct axes
+plt.ylabel(r'$M_{f,water}$')
+plt.xlabel('Equilibration Time (min)')
+plt.xticks()
+plt.yticks()
+
+#save figure
+#plt.savefig('equilibration_plot.svg', format='svg', bbox_inches='tight')
+
+plt.show()
+
+#%% Absorbance Figure
+
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+ 
+#p1 = sns.scatterplot(data = equilibration, x = 'Cwat', y = 'Coct')
+
+
+
+sns.scatterplot(data = absorbance, x = 'Time', label = 'NDMA',
+                     y = 'NDMA', edgecolor = 'black', 
+                     facecolor = 'red', linewidth =1, ax =ax, zorder=3)
+sns.scatterplot(data = absorbance, x = 'Time', label = 'NMOR',
+                     y = 'NMOR', edgecolor = 'black', 
+                     facecolor = 'grey', linewidth =1, ax =ax, zorder=3)
+sns.scatterplot(data = absorbance, x = 'Time', label = 'NPIP',
+                     y = 'NPIP', edgecolor = 'black', 
+                     facecolor = 'blue', linewidth =1, ax =ax, zorder=3)
+sns.scatterplot(data = absorbance, x = 'Time', 
+                     y = 'NDBA', edgecolor = 'black', label = 'NDBA',
+                     facecolor = 'black', linewidth =1, ax =ax, zorder=3)
+plt.ylim(0, 600000)
+plt.xlim(0,400)
+
+# Format y-axis as scientific notation (e.g., 6×10⁵)
+plt.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+
+plt.legend(
+    loc='center left',           # Anchor point of the legend box
+    bbox_to_anchor=(0.02, 0.15),  # Position: ~2% from left, halfway up y-axis
+    ncol=2,                      # Arrange all 4 labels in a single horizontal row
+    frameon=True,                # Optional: keep the legend box
+    fontsize='small'             # Optional: adjust font size if crowded
+)
+
+
+#add error bars
+
+plt.errorbar(
+    absorbance['Time'], 
+    absorbance['NDMA'], 
+    yerr=absorbance['NDMA std'],
+
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=5, linewidth=3, alpha = 1  # Size of the error bar caps
+)
+plt.errorbar(
+    absorbance['Time'], 
+    absorbance['NMOR'], 
+    yerr=absorbance['NMOR std'],
+
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=5, linewidth=3, alpha = 1  # Size of the error bar caps
+)
+
+plt.errorbar(
+    absorbance['Time'], 
+    absorbance['NPIP'], 
+    yerr=absorbance['NPIP std'],
+
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=5, linewidth=3, alpha = 1  # Size of the error bar caps
+)
+
+plt.errorbar(
+    absorbance['Time'], 
+    absorbance['NDBA'], 
+    yerr=absorbance['NDBA std'],
+
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=5, linewidth=1, alpha = 1  # Size of the error bar caps
+)
+
+# label and correct axes
+plt.ylabel('Signal (counts)')
+plt.xlabel('Time (min)')
+plt.xticks()
+plt.yticks()
+
+
+#save figure
+#plt.savefig('absorbance_plot.svg', format='svg', bbox_inches='tight')
+
+plt.show()
+
+
+
+
+
+
+
+#%% Data Comparisons
+
+########## COMPARISONS RAW DATA ##########
+
+mdf2 = pd.ExcelFile("/Users/nbugher/MIT Dropbox/Nicolette Bugher/Plata Lab/Bugher/SRP/Chapter 4 (K estimation)/Python_code_Kow_data.xlsx")
+df_kow = pd.read_excel(mdf2,'Data')
+df_std_error =pd.read_excel(mdf2, 'Error')
+df_references = pd.read_excel(mdf2, 'hplc_references')
+df_nitros_test = pd.read_excel(mdf2, 'hplc_nitrosamines')
+df_ci_plots = pd.read_excel(mdf2,'hplc_ci')
+df_referencesk40 = pd.read_excel(mdf2, 'hplc_k40_references')
+df_nitrosaminesk40 = pd.read_excel(mdf2, 'nitrosamines_k40')
+
+
+
+#%% HPLC reference regression plot and regression FOR ALL k extrapolated to kw
+
+### get CI predictions to plot
+
+import statsmodels.formula.api as smf
+
+model1 = smf.ols('y ~ x', data = df_references).fit()
+
+predictions = model1.get_prediction(df_ci_plots[['x']])
+
+predicted_values = predictions.predicted_mean
+predicted_values = pd.DataFrame(predicted_values)
+conf_int = predictions.conf_int()
+pred_int = predictions.summary_frame(alpha=0.05)
+pred_obs = predictions.se_obs
+pred_int['se_obs'] = pred_obs
+pred_int['test_value'] = df_ci_plots[['x']]
+print(pred_int)
+
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+
+sns.set_context("paper", rc={
+    "font.size": 10,
+    "axes.titlesize": 10,
+    "axes.labelsize": 10,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+    "legend.fontsize": 10})
+
+sns.lmplot(data = df_references, x = 'x', y = 'y', fit_reg=True, ci=95, n_boot=1,
+           scatter_kws={'color':'black'}, line_kws={'color':'black'}, height = 3.33, aspect =1)
+
+plt.fill_between(data = pred_int, x='test_value', y1 = 'mean_ci_lower', y2='mean_ci_upper',
+                 alpha = 0.5, color = 'grey', zorder=0)
+
+#sns.scatterplot(data = pred_int, x = 'test_value' , y = 'mean_ci_lower')
+#sns.scatterplot(data = pred_int, x = 'test_value' , y = 'mean_ci_upper')
+
+#plt.title('Reference Compounds')
+plt.xlabel(r'$log k^{\prime}_{water}$')
+plt.ylabel(r'$log K_{octanol-water}$')
+
+#plt.savefig('final_hplc_reference_regression_95CI.pdf', format='pdf', bbox_inches='tight')
+plt.show()
+
+#%% get standard error of reference compounds?
+
+predictions = model1.get_prediction(df_references[['x']])
+
+predicted_values = predictions.predicted_mean
+predicted_values = pd.DataFrame(predicted_values)
+conf_int = predictions.conf_int()
+pred_int = predictions.summary_frame(alpha=0.05)
+pred_obs = predictions.se_obs
+pred_int['se_obs'] = pred_obs
+pred_int['test_value'] = df_references[['x']]
+print(pred_int)
+
+#%% use stats model  to get observation error for each nitrosamine from HPLC determination
+import statsmodels.formula.api as smf
+
+model1 = smf.ols('y ~ x', data = df_references).fit()
+
+#print(model1.summary())
+
+predictions = model1.get_prediction(df_nitros_test[['x']])
+
+predicted_values = predictions.predicted_mean
+predicted_values = pd.DataFrame(predicted_values)
+conf_int = predictions.conf_int()
+pred_int = predictions.summary_frame(alpha=0.05)
+pred_obs = predictions.se_obs
+pred_int['se_obs'] = pred_obs
+pred_int['nitrosamine']=df_nitros_test['Compound']
+
+#print(f"{'Compound':<8} {'log_kw':<12} {'Actual':<10} {'Predicted':<12} {'SE_obs':<10} {'Error':<10} {'95% CI Lower':<12} {'95% CI Upper':<12}")
+#print("-" * 110)
+
+for i, compound in enumerate(df_nitros_test['Compound']):
+    actual = df_nitros_test.iloc[i]['y']
+    predicted = predicted_values.iloc[i]
+    se_obs = pred_int.iloc[i]['se_obs']  # Standard error for individual observation
+    error = actual - predicted
+    ci_lower = pred_int.iloc[i]['obs_ci_lower']
+    ci_upper = pred_int.iloc[i]['obs_ci_upper']
+
+#%% HPLC reference regression plot and regression using k40
+
+### get CI predictions to plot
+
+import statsmodels.formula.api as smf
+
+model40 = smf.ols('y ~ x', data = df_referencesk40).fit()
+params = model40.params
+predictions = model40.get_prediction(df_ci_plots[['x']])
+
+predicted_values = predictions.predicted_mean
+predicted_values = pd.DataFrame(predicted_values)
+conf_int = predictions.conf_int()
+pred_int = predictions.summary_frame(alpha=0.05)
+pred_obs = predictions.se_obs
+pred_int['se_obs'] = pred_obs
+pred_int['test_value'] = df_ci_plots[['x']]
+
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+
+sns.set_context("paper", rc={
+    "font.size": 10,
+    "axes.titlesize": 10,
+    "axes.labelsize": 10,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+    "legend.fontsize": 10})
+
+sns.lmplot(data = df_referencesk40, x = 'x', y = 'y', fit_reg=True, ci=95, n_boot=1,
+           scatter_kws={'color':'black'}, line_kws={'color':'black'}, height = 3.33, aspect =1)
+
+plt.fill_between(data = pred_int, x='test_value', y1 = 'mean_ci_lower', y2='mean_ci_upper',
+                 alpha = 0.5, color = 'grey', zorder=0)
+
+#sns.scatterplot(data = pred_int, x = 'test_value' , y = 'mean_ci_lower')
+#sns.scatterplot(data = pred_int, x = 'test_value' , y = 'mean_ci_upper')
+
+#plt.title('Reference Compounds')
+plt.xlabel(r'$log k^{\prime}_{water}$')
+plt.ylabel(r'$log K_{octanol-water}$')
+
+#plt.savefig('final_hplc_reference_regression_usingk40.pdf', format='pdf', bbox_inches='tight')
+plt.show()
+
+#%% get standard error of reference compounds?
+
+predictions = model40.get_prediction(df_referencesk40[['x']])
+
+predicted_values = predictions.predicted_mean
+predicted_values = pd.DataFrame(predicted_values)
+conf_int = predictions.conf_int()
+pred_int = predictions.summary_frame(alpha=0.05)
+pred_obs = predictions.se_obs
+pred_int['se_obs'] = pred_obs
+pred_int['test_value'] = df_references[['x']]
+print(pred_int)
+
+#%%
+
+
+model40 = smf.ols('y ~ x', data = df_referencesk40).fit()
+
+#print(model1.summary())
+
+predictions = model40.get_prediction(df_nitrosaminesk40[['x']])
+
+predicted_values = predictions.predicted_mean
+predicted_values = pd.DataFrame(predicted_values)
+conf_int = predictions.conf_int()
+pred_int = predictions.summary_frame(alpha=0.05)
+pred_obs = predictions.se_obs
+pred_int['se_obs'] = pred_obs
+
+for i, compound in enumerate(df_nitros_test['Compound']):
+    actual = df_nitros_test.iloc[i]['y']
+    predicted = predicted_values.iloc[i]
+    se_obs = pred_int.iloc[i]['se_obs']  # Standard error for individual observation
+    error = actual - predicted
+    ci_lower = pred_int.iloc[i]['obs_ci_lower']
+    ci_upper = pred_int.iloc[i]['obs_ci_upper']
+    
+print(pred_int)  
+
+
+
+###### DATA COMPARISONS ANALYSES ############
+
+
+#%% Experimental Data Comparison to Experimental Data
+
+#calculate MAE of Exp Data (Vera 1991) compared to this study
+
+x = df_kow['This Study Experimental']
+y = df_kow['Vera 1991']
+valid_indices = x.notna() & y.notna()
+mae_vera = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse_vera = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+print('mae vera:', mae_vera, "& rmse:", rmse_vera)
+
+# Calculate MAE of Exp Data (Singer 1977) to this study
+x = df_kow['This Study Experimental']
+y = df_kow['Singer 1977']
+valid_indices = x.notna() & y.notna()
+mae_sing = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse_sing = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+print('mae sing:', mae_sing ,'& rmse:', rmse_sing)
+
+#calculate MAE of Vera 1991 to Singer 1977
+x = df_kow['Vera 1991']
+y = df_kow['Singer 1977']
+valid_indices = x.notna() & y.notna()
+mae_sing_vera = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse_sing_vera = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+print('mae sing_vera:', mae_sing_vera ,'& rmse sing_vera:', rmse_sing_vera)
+
+#Plot experimental data comparisons
+
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+
+p3 = plt.figure(figsize=(3.33, 3.33))
+sns.scatterplot(data=df_kow, x='This Study Experimental', y='Vera 1991', label='Vera 1991',
+                marker = '+',facecolor = 'blue', s= 60, linewidth = 0.8)
+sns.scatterplot(data=df_kow, x='This Study Experimental', y='Singer 1977', label='Singer 1977', 
+                marker='X', edgecolor = 'blue', facecolor = 'none', linewidth = 0.8)
+
+# Add the 1:1 reference line
+plt.plot([-1, 3], [-1, 3], linestyle=':', color='gray', linewidth=2, label='1:1 line', zorder = 0)
+
+plt.text(0.6, -0.2, f'MAE Vera = {mae_vera:.3f}', fontsize=10, color='black')
+plt.text(0.6, -0.4, f'RMSE Vera = {rmse_vera:.3f}', fontsize=10, color='black')
+
+plt.text(0.6, -0.6, f'MAE Singer = {mae_sing:.3f}', fontsize=10, color='black')
+plt.text(0.6, -0.8, f'RMSE Singer = {rmse_sing:.3f}', fontsize=10, color='black')
+
+plt.ylim(-1,3)
+plt.xlim(-1,3)
+plt.xlabel('$log$ $K_{ow}$ (this study)')
+plt.ylabel('$log$ $K_{ow}$ (literature)')
+
+plt.grid(False)
+
+#save figure
+#plt.savefig('NO TEMP CORRECT_experinental_comparison_plot.tiff', format='tiff', bbox_inches='tight')
+plt.show()
+
+
+
+
+#%% All QSPR Comparison
+
+a = df_kow['UFZ LSER']
+b = df_kow['Abraham 2002']
+c = df_kow['updated abraham']
+p = df_kow['ADME']
+q = df_kow['RMG Solvation Updated Abraham']
+r = df_kow['RMG Solvation UFZ LSER']
+x = df_kow['Average Experimental Screened']
+d = df_kow['iLOGP']
+e = df_kow['XLOGP3'] 
+f = df_kow['WLOGP']
+g = df_kow['MLOGP']
+h = df_kow['Silicos-IT Log P']
+
+print(x)
+print(p)
+print(h)
+
+valid_indices = x.notna() & a.notna()
+a_mae = np.mean(np.abs(x[valid_indices] - a[valid_indices]))
+a_rmse = np.sqrt(np.mean((x[valid_indices] - a[valid_indices]) ** 2))
+print(" UFZ LSER mae:", a_mae, " UFZ LSER rmse &", a_rmse)
+
+valid_indices = x.notna() & b.notna()
+b_mae = np.mean(np.abs(x[valid_indices] - b[valid_indices]))
+b_rmse = np.sqrt(np.mean((x[valid_indices] - b[valid_indices]) ** 2))
+print("Abraham 2002 mae:", b_mae, "Abraham 2002 rmse &", b_rmse)
+
+valid_indices = x.notna() & c.notna()
+c_mae = np.mean(np.abs(x[valid_indices] - c[valid_indices]))
+c_rmse = np.sqrt(np.mean((x[valid_indices] - c[valid_indices]) ** 2))
+
+print("updated abraham mae:", c_mae, "updated Abraham  rmse &", c_rmse)
+
+valid_indices = x.notna() & p.notna()
+p_mae = np.mean(np.abs(x[valid_indices] - p[valid_indices]))
+p_rmse = np.sqrt(np.mean((x[valid_indices] - p[valid_indices]) ** 2))
+
+print("ADME 2002 mae:", p_mae, "ADMErmse &", p_rmse)
+
+valid_indices = x.notna() & q.notna()
+q_mae = np.mean(np.abs(x[valid_indices] - q[valid_indices]))
+q_rmse = np.sqrt(np.mean((x[valid_indices] - q[valid_indices]) ** 2))
+
+print("RMG Abraham mae:", q_mae, "RMG Abraham rmse &", q_rmse)
+
+valid_indices = x.notna() & r.notna()
+r_mae = np.mean(np.abs(x[valid_indices] - r[valid_indices]))
+r_rmse = np.sqrt(np.mean((x[valid_indices] - r[valid_indices]) ** 2))
+
+
+print("RMG UFZ LSER:", r_mae, "RMG LSER rmse &", r_rmse)
+
+valid_indices = x.notna() & d.notna()
+d_mae = np.mean(np.abs(x[valid_indices] - d[valid_indices]))
+d_rmse = np.sqrt(np.mean((x[valid_indices] - d[valid_indices]) ** 2))
+
+
+print("iLOGP:", d_mae, "RMG LSER rmse &", d_rmse)
+
+valid_indices = x.notna() & e.notna()
+e_mae = np.mean(np.abs(x[valid_indices] - e[valid_indices]))
+e_rmse = np.sqrt(np.mean((x[valid_indices] - e[valid_indices]) ** 2))
+
+
+print("XLOGP3:", e_mae, "RMG LSER rmse &", e_rmse)
+
+valid_indices = x.notna() & f.notna()
+f_mae = np.mean(np.abs(x[valid_indices] - f[valid_indices]))
+f_rmse = np.sqrt(np.mean((x[valid_indices] - f[valid_indices]) ** 2))
+
+print("WLOGP:", f_mae, "RMG LSER rmse &", f_rmse)
+
+valid_indices = x.notna() & g.notna()
+g_mae = np.mean(np.abs(x[valid_indices] - g[valid_indices]))
+g_rmse = np.sqrt(np.mean((x[valid_indices] - g[valid_indices]) ** 2))
+
+print("MLogP:", g_mae, "RMG LSER rmse &", g_rmse)
+
+valid_indices = x.notna() & h.notna()
+h_mae = np.mean(np.abs(x[valid_indices] - h[valid_indices]))
+h_rmse = np.sqrt(np.mean((x[valid_indices] - h[valid_indices]) ** 2))
+
+print("Silicos IT LogP:", h_mae, "RMG LSER rmse &", h_rmse)
+
+x = 'Average Experimental Screened'
+
+# List of methods and their plotting styles
+plot_config = [
+    
+    {'col': 'updated abraham', 'label': 'Abraham 2.0', 'marker': 'd', 'facecolor':'red', 'edgecolor':'red', 'linewidth': 1},
+    {'col': 'ADME', 'label': 'SwissADME', 'marker': 'X', 'facecolor':'none', 'edgecolor':'blue', 'linewidth': 0.5},
+    {'col': 'RMG Solvation Updated Abraham', 'label': 'RMGSolvation & Abraham', 'marker': 'o', 'facecolor':'grey', 'edgecolor':'blue', 'linewidth': 0.5},
+    {'col': 'RMG Solvation UFZ LSER', 'label': 'RMGSolvation & Goss', 'marker': 's', 'facecolor':'grey', 'edgecolor':'blue', 'linewidth': 0.5},
+    
+     {'col': 'UFZ LSER', 'label': 'QSPR (this study)', 'marker': 'D', 'facecolor':'none','edgecolor': 'red'},
+     {'col': 'Abraham 2002', 'label': 'QSPR (Abraham 2002)', 'marker': 'd', 'facecolor':'none','edgecolor': 'red'}
+    
+]
+
+sns.set(rc = {'figure.figsize':(7,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+
+plt.figure(figsize=(7, 3.33))
+
+for config in plot_config:
+    # Plot all points except NMOR in black
+    sns.scatterplot(
+        data=df_kow,
+        x=x,
+        y=config['col'],
+        label=config['label'],
+        marker=config['marker'],
+        edgecolor=config['edgecolor'],
+        facecolor=config['facecolor'],
+        #linewidth = config['linewidth'],
+        s = 60,
+        alpha = 0.8,
+        legend=False
+    )
+    
+
+plt.plot([-1, 3.7], [-1, 3.7], linestyle=':', color='gray', linewidth=2, alpha = 0.5)
+plt.ylim(-1.1,3.8)
+plt.xlim(-1.1,3.8)
+
+plt.xlabel('Shake-flask $log K_{ow}$')
+plt.ylabel('$log K_{ow}$')
+#plt.title('Comparison of Determination Methods')
+plt.legend(fontsize = '10')
+plt.grid(False)
+
+#Change plot x and y limits
+#plt.ylim(0.9,2.75)
+#plt.xlim(0.9,2.75)
+plt.tight_layout()
+#plt.savefig('legend1.svg', format='svg', bbox_inches='tight')
+#plt.savefig('00_All_fullscale_NO HPLC.svg', format='svg', bbox_inches='tight')
+plt.show()
+
+
+
+
+
+#%% Comparison of Abraham QSPR compared to this study QSPR (UFZ LSER, Goss)
+
+# Calculate MAE of Abraham and Experimental
+x = df_kow['UFZ LSER']
+y = df_kow['Abraham 2002']
+valid_indices = x.notna() & y.notna()
+mae = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+print("mae:", mae, "rmse &", rmse)
+
+
+## Then plot
+
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+
+p4 = plt.figure(figsize=(3.33, 3.33))
+# sns.scatterplot(data=df_kow, x='Average Experimental Screened', y='Ashworth COSMO-RS', label='Ashworth 2021', edgecolor = 'red',
+#                 marker = 'v', facecolor = 'none',)
+sns.scatterplot(data=df_kow, x='UFZ LSER', y='Abraham 2002', 
+                marker='o', edgecolor = 'black', facecolor = 'black')
+
+
+# Add the 1:1 reference line
+plt.plot([-1, 2.6], [-1, 2.6], linestyle=':', color='grey', linewidth=2, label='1:1 line', zorder = 0)
+
+# plt.text(0.6, 0.1, f'MAE Ash = {mae_ash:.3f}', fontsize=10, color='black')
+# plt.text(0.6, -0.1, f'RMSE Ash= {rmse_ash:.3f}', fontsize=10, color='black')
+
+plt.text(1.4, -0.7, f'MAE = {mae:.3f}', fontsize=10, color='black')
+plt.text(1.4, -0.9, f'RMSE = {rmse:.3f}', fontsize=10, color='black')
+
+
+plt.ylim(-1,3)
+plt.xlim(-1,3)
+
+plt.xlabel('QSPR log $K_\mathrm{ow}$ (this study) ')
+plt.ylabel('QSPR log $K_\mathrm{ow}$ (Abraham)')
+
+plt.grid(False)
+
+#save figure
+#plt.savefig('1_QSPR_ABR_This_Study_Plot.svg', format='svg', bbox_inches='tight')
+plt.show()
+
+#%% compare this study experimental and this study COSMO-RS with MAE reported
+
+# Calculate MAE
+x = df_kow['This Study Experimental']
+y = df_kow['COSMO-RS']
+valid_indices = x.notna() & y.notna()
+mae = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+print(rmse)
+
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+
+p5 = plt.figure(figsize=(3.33, 3.33))
+sns.scatterplot(data=df_kow, x='This Study Experimental', y='COSMO-RS',  edgecolor = 'black', facecolor = 'black',)
+
+
+
+# Add the 1:1 reference line
+plt.plot([-1, 2.6], [-1, 2.6], linestyle=':', color='gray', linewidth=2, label='1:1 line')
+# Report MAE on the figure
+plt.text(0, 2.4, f'MAE = {mae:.3f}', fontsize=10, color='black')
+plt.text(0, 2.2, f'RMSE = {rmse:.3f}', fontsize=10, color='black')
+
+
+plt.xlabel('Shake-Flask LogK')
+plt.ylabel('COSMO-RS LogK')
+plt.title('Exp. and COSMO-RS Comparison')
+plt.grid(False)
+
+#plt.savefig('final_this_study_exp_and_COSMO-RS_2025_comparison.pdf', format='pdf', bbox_inches='tight')
+plt.show()
+
+
+
+
+
+#%% Comparison of COSMO-RS this study to Ashworth 2021
+
+# Calculate MAE
+x = df_kow['COSMO-RS']
+y = df_kow['Ashworth COSMO-RS']
+valid_indices = x.notna() & y.notna()
+mae = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+print(rmse)
+
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+
+p6 = plt.figure(figsize=(3.33, 3.33))
+sns.scatterplot(data=df_kow, x='COSMO-RS', y='Ashworth COSMO-RS',  edgecolor = 'black',
+                marker = 'o', facecolor = 'black',)
+
+
+
+# Add the 1:1 reference line
+plt.plot([-1, 2.6], [-1, 2.6], linestyle=':', color='gray', linewidth=2, label='1:1 line')
+# Report MAE on the figure
+plt.text(-1, 2.4, f'MAE = {mae:.3f}', fontsize=10, color='black')
+plt.text(-1, 2.2, f'RMSE = {rmse:.3f}', fontsize=10, color='black')
+
+
+plt.xlabel('COSMO-RS log $K_{ow}$ (this study)', fontsize = 12)
+plt.ylabel('COSMO-RS log $K_{ow}$ (Ashworth)', fontsize = 12)
+#plt.title('COSMO-RS Comparison')
+plt.grid(False)
+
+
+#plt.savefig('NO TEMP CORRECT_COSMO-RS_Ashworth_COSMO-RS_this study.svg', format='svg', bbox_inches='tight')
+plt.show()
+
+
+
+
+
+
+#%% Compare average experimental data to COSMO-RS and Ashworth COSMO-RS
+
+
+# Calculate MAE and RMSE COSMO
+x = df_kow['Average Experimental Screened']
+y = df_kow['COSMO-RS'] 
+valid_indices = x.notna() & y.notna()
+mae = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+
+x = df_kow['Average Experimental Screened']
+y = df_kow['Ashworth COSMO-RS']
+valid_indices = x.notna() & y.notna()
+mae_ash = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse_ash = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+
+# Set plot style
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+
+p7 = plt.figure(figsize=(3.33, 3.33))
+ax = sns.scatterplot(data=df_kow, x='Average Experimental Screened', y='COSMO-RS', edgecolor='darkred', facecolor='grey', label = 'This Study',
+                marker = '^', s= 50, zorder = 1, alpha = 0.8)
+sns.scatterplot(data=df_kow, x='Average Experimental Screened', y='Ashworth COSMO-RS', edgecolor='red', label = 'Ashworth 2021',
+                marker = 'v', s = 55, facecolor='none', zorder = 2)
+       
+plt.legend()
+# Add the 1:1 reference line
+plt.plot([-1, 3], [-1, 3], linestyle=':', color='black', linewidth=2, label='1:1 line', alpha = 0.8, zorder = 0)
+
+plt.errorbar(
+    df_kow['Average Experimental Screened'], 
+    df_kow['Ashworth COSMO-RS'], 
+    xerr=df_std_error['Average Experimental Screened'],# Use error values from error sheet
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=2, linewidth=1, alpha = 0.6, zorder = 0  # Size of the error bar caps
+)
+
+plt.errorbar(
+    df_kow['Average Experimental Screened'], 
+    df_kow['COSMO-RS'], 
+    xerr=df_std_error['Average Experimental Screened'],# Use error values from error sheet
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=2, linewidth=1, alpha = 0.6, zorder = 0 # Size of the error bar caps
+)
+# Report MAE and RMSE on the figure
+plt.text(0.2, -0.2, f'MAE COSMO-RS= {mae:.3f}', fontsize=10, color='black')
+plt.text(0.2, -0.4, f'RMSE COSMO-RS = {rmse:.3f}', fontsize=10, color='black')
+
+plt.text(0.2, -0.6, f'MAE Ashworth= {mae_ash:.3f}', fontsize=10, color='black')
+plt.text(0.2, -0.8, f'RMSE Ashworth= {rmse_ash:.3f}', fontsize=10, color='black')
+
+plt.ylim(-1.1,3)
+plt.xlim(-1.1,3)
+
+
+plt.xlabel('Shake-flask $log$ $K_{ow}$')
+plt.ylabel('COSMO-RS $log$ $K_{ow}$')
+ax.set_xticks([-1,0,1,2,3])
+
+plt.grid(False)
+
+#plt.savefig('NO TEMP CORRECT_SI_final_shake-flask to_COSMO-RS_and_Ashworth_COSMO-RS_comparison.tiff', format='tiff', bbox_inches='tight')
+
+plt.show()
+
+#%%Plot COSMO-RS this study and QSPR this study
+# Calculate MAE and RMSE COSMO
+x = df_kow['Average Experimental Screened']
+y = df_kow['COSMO-RS'] 
+valid_indices = x.notna() & y.notna()
+mae = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+
+x = df_kow['Average Experimental Screened']
+y = df_kow['UFZ LSER']
+valid_indices = x.notna() & y.notna()
+mae_ufz = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse_ufz = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+
+# Set plot style
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+
+p7 = plt.figure(figsize=(3.33, 3.33))
+ax = sns.scatterplot(data=df_kow, x='Average Experimental Screened', y='COSMO-RS', edgecolor='darkred', facecolor='grey', label = 'COSMO-RS',
+                marker = '^', s= 70, zorder = 2, alpha = 1, linewidth = 1)
+
+sns.scatterplot(data=df_kow, x='Average Experimental Screened', y='UFZ LSER', label='QSPR', 
+                marker='D', edgecolor = 'darkred', facecolor = 'black', zorder = 1, s=70, alpha = 0.8, linewidth = 1)
+plt.legend()
+# Add the 1:1 reference line
+plt.plot([-1, 3], [-1, 3], linestyle=':', color='black', linewidth=2, label='1:1 line', alpha = 0.8, zorder = 0)
+
+plt.errorbar(
+    df_kow['Average Experimental Screened'], 
+    df_kow['UFZ LSER'], 
+    xerr=df_std_error['Average Experimental Screened'],# Use error values from error sheet
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=2, linewidth=1, alpha = 1, zorder = 0 # Size of the error bar caps
+)
+
+plt.errorbar(
+    df_kow['Average Experimental Screened'], 
+    df_kow['COSMO-RS'], 
+    xerr=df_std_error['Average Experimental Screened'],# Use error values from error sheet
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=2, linewidth=1, alpha = 0.6, zorder = 0 # Size of the error bar caps
+)
+# Report MAE and RMSE on the figure
+plt.text(0.2, -0.4, f'MAE COSMO-RS= {mae:.3f}', fontsize=10, color='black')
+plt.text(0.2, -0.6, f'RMSE COSMO-RS = {rmse:.3f}', fontsize=10, color='black')
+
+plt.text(0.2, -0.8, f'MAE QSPR= {mae_ufz:.3f}', fontsize=10, color='black')
+plt.text(0.2, -1, f'RMSE QSPR= {rmse_ufz:.3f}', fontsize=10, color='black')
+
+plt.ylim(-1.1,3)
+plt.xlim(-1.1,3)
+
+
+plt.xlabel('Shake-flask log $K_\mathrm{ow}$')
+plt.ylabel('log $K_\mathrm{ow}$')
+ax.set_xticks([-1,0,1,2,3])
+
+plt.grid(False)
+
+#plt.savefig('3_QSPR_COSMO-RS_This_Study.svg', format='svg', bbox_inches='tight')
+
+plt.show()
+
+
+#%% Comparison of Average Experimental Data to HPLC experimental data
+
+# Calculate MAE and RMSE
+x = df_kow['Average Experimental Screened']
+y = df_kow['HPLC Estimates']
+valid_indices = x.notna() & y.notna()
+mae = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+
+x = df_kow['Average Experimental Screened']
+y = df_kow['HPLC Estimates k40']
+valid_indices = x.notna() & y.notna()
+mae_k40 = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse_k40 = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+
+# Set plot style
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+
+p10 = plt.figure(figsize=(3.33, 3.33))
+sns.scatterplot(data=df_kow, x='Average Experimental Screened', y='HPLC Estimates', 
+                label = 'HPLC kw', marker = 's', edgecolor='blue', facecolor='black', alpha =0.8)
+sns.scatterplot(data=df_kow, x='Average Experimental Screened', y='HPLC Estimates k40', 
+                label = 'HPLC k0.4', marker = 's' ,edgecolor='blue', facecolor='grey', alpha = 0.8)
+
+plt.errorbar(
+    df_kow['Average Experimental Screened'], 
+    df_kow['HPLC Estimates'], 
+    yerr=df_std_error['HPLC Error'],
+    xerr=df_std_error['Average Experimental Screened'],# Use error values from error sheet
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=2, linewidth=1, alpha = 0.8, zorder = 0  # Size of the error bar caps
+)
+
+plt.errorbar(
+    df_kow['Average Experimental Screened'], 
+    df_kow['HPLC Estimates k40'], 
+    yerr=df_std_error['HPLC k40'],
+    xerr=df_std_error['Average Experimental Screened'],# Use error values from error sheet
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=2, linewidth=1, alpha = 0.8, zorder = 0  # Size of the error bar caps
+)
+
+plt.legend()
+# Add the 1:1 reference line
+plt.plot([-1, 4], [-1, 4], linestyle=':', color='gray', linewidth=2, label='1:1 line', zorder = 0, alpha = 0.8)
+# Report MAE and RMSE on the figure
+plt.text(-1, 3.8, f'MAE kw = {mae:.3f}', fontsize=10, color='black')
+plt.text(-1, 3.5, f'RMSE kw = {rmse:.3f}', fontsize=10, color='black')
+plt.text(-1, 3.2, f'MAE k0.4 = {mae_k40:.3f}', fontsize=10, color='black')
+plt.text(-1, 2.9, f'RMSE k0.4 = {rmse_k40:.3f}', fontsize=10, color='black')
+
+
+
+
+plt.xlim(-1.1,4.1)
+ax = plt.gca()
+ax.set_xticks([-1,0,1,2,3,4])
+plt.ylim(-1.1,4.1)
+
+plt.xlabel('Experimental Log K')
+plt.ylabel('HPLC Log K')
+#plt.title('HPLC LogK Determination')
+plt.grid(False)
+
+#plt.savefig('00_HPLC_to_HPLC_Comparison.svg', format='svg', bbox_inches='tight')
+
+plt.show()
+
+#%% Comparison of Experimental Data (This Study) to COSMO data (This Study)
+
+
+x = df_kow['Average Experimental Screened']
+y = df_kow['COSMO-RS']
+valid_indices = x.notna() & y.notna()
+mae_cos = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse_cos = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+
+
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+figure, ax = plt.subplots(1,1)
+
+p5 = plt.figure(figsize=(3.33, 3.33))
+
+a1 = sns.scatterplot(data=df_kow, x='Average Experimental Screened', y='COSMO-RS',  marker = '^', edgecolor = 'red', 
+                facecolor = 'grey', alpha = 1, s = 60)
+
+plt.errorbar(
+    df_kow['Average Experimental Screened'], 
+    df_kow['COSMO-RS'], 
+    xerr=df_std_error['Average Experimental Screened'],# Use error values from error sheet
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=2, linewidth=1, alpha = 0.8, zorder = 0 # Size of the error bar caps
+)
+
+
+# Add the 1:1 reference line
+plt.plot([-1, 3], [-1, 3], linestyle=':', color='black', linewidth=2, label='1:1 line', alpha = 0.8, zorder = 0)
+plt.text(-0.9, 2.8, f'MAE = {mae_cos:.3f}', fontsize=10, color='black')
+plt.text(-0.9, 2.6, f'RMSE = {rmse_cos:.3f}', fontsize=10, color='black')
+plt.xlabel('Shake-flask $log$ $K_{ow}$')
+plt.ylabel('COSMO-RS $log$ $K_{ow}$')
+xticks = np.arange(-1,5,1)
+xlabels = ['-1', '0', '1', '2', '3', '4']
+
+plt.ylim(-1.1,3)
+plt.xlim(-1.1,3)
+a1.set_xticks(np.arange(-1,4,1))
+
+
+
+plt.grid(False)
+
+#plt.savefig('NO TEMP CORRECT_COSMO-RS.svg', format='svg', bbox_inches='tight')
+plt.show()
+
+
+
+
+#%%
+
+# Calculate MAE and RMSE
+x = df_kow['Average Experimental']
+y = df_kow['COSMO-RS']
+valid_indices = x.notna() & y.notna()
+mae_cos = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse_cos = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+
+# Calculate MAE and RMSE
+x = df_kow['Average Experimental']
+y = df_kow['Ashworth COSMO-RS']
+valid_indices = x.notna() & y.notna()
+mae_ash = np.mean(np.abs(x[valid_indices] - y[valid_indices]))
+rmse_ash = np.sqrt(np.mean((x[valid_indices] - y[valid_indices]) ** 2))
+
+# plot the two against teh average experimental values
+
+sns.set(rc = {'figure.figsize':(3.33,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+
+# Prepare the columns
+x = df_kow['Average Experimental']
+y = df_kow['COSMO-RS']
+z = df_kow['Ashworth COSMO-RS']
+xerr = df_kow['Average Experimental StdDev']
+
+
+
+p7 = plt.figure(figsize=(3.33, 3.33))
+sns.scatterplot(data=df_kow, x=x, y=y, marker = '^', label='COSMO-RS', edgecolor = 'red', facecolor = 'grey',)
+sns.scatterplot(data=df_kow, x=x, y=z, label='Ashworth 2021', 
+                marker='v', edgecolor = 'red', facecolor = 'none')
+
+# Add error bars using values from the average values 
+plt.errorbar(
+    df_kow['Average Experimental'], 
+    df_kow['COSMO-RS'], 
+    xerr=df_kow['Average Experimental StdDev'],  # Use error values from error sheet
+    fmt='none',  # No additional markers
+    ecolor='black', 
+    capsize=2, linewidth=1, alpha = 0.5  # Size of the error bar caps
+)
+
+# Add error bars using values from the Error sheet
+plt.errorbar(
+    df_kow['Average Experimental'], 
+    df_kow['Ashworth COSMO-RS'], 
+    xerr=df_kow['Average Experimental StdDev'],  # Use error values from error sheet
+    fmt='none',  # No additional markers
+    ecolor='gray',linewidth=1 , alpha = 0.5, 
+    capsize=2  # Size of the error bar caps
+)
+
+
+plt.legend(fontsize = 10)
+# Add the 1:1 reference line
+plt.plot([-1, 2.6], [-1, 2.6], linestyle=':', color='gray', linewidth=2, label='1:1 line', alpha = 0.5)
+
+plt.title('COSMO-RS Comparison')
+plt.xlabel('Mean Experimental LogK')
+plt.ylabel('COSMO-RS Calculated LogK')
+
+plt.text(-0.5, 2.6, f'MAE 2021 = {mae_ash:.3f}', fontsize=10, color='black')
+plt.text(-0.50, 2.4, f'RMSE 2021 = {rmse_ash:.3f}', fontsize=10, color='black')
+
+plt.text(-0.5, 2.2, f'MAE 2025 = {mae_cos:.3f}', fontsize=10, color='black')
+plt.text(-0.50, 2.0, f'RMSE 2025 = {rmse_cos:.3f}', fontsize=10, color='black')
+
+plt.grid(False)
+
+#save figure
+#plt.savefig('final_COSMO_WITH ERROR BARS_with_Ash.pdf', format='pdf', bbox_inches='tight')
+plt.show()
+
+
+
+#%% All estimate plots
+
+
+# plot the two against screened average experimental values
+
+sns.set(rc = {'figure.figsize':(7,3.5),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+
+# Prepare the columns
+x = df_kow['Average Experimental Screened']
+y = df_kow['COSMO-RS']
+z = df_kow['Ashworth COSMO-RS']
+a = df_kow['Vera 1991']
+b = df_kow['Singer 1977']
+c = df_kow['Abraham 2002']
+d = df_kow['This Study Experimental']
+e = df_kow['UFZ LSER']
+f = df_kow['HPLC Estimates k40']
+g = df_kow['ADME']
+
+
+
+
+p8 = plt.figure(figsize=(7, 3.5))
+
+
+sns.scatterplot(data=df_kow, x=x, y=y, label='COSMO-RS (this study)', marker = '^',
+                edgecolor = 'red', facecolor = 'grey', alpha = 0.8, s=50)
+sns.scatterplot(data=df_kow, x=x, y=z, label='COSMO-RS (Ashworth 2021)', 
+                marker='v', edgecolor = 'red', facecolor = 'none', alpha = 0.9, s=50)
+sns.scatterplot(data=df_kow, x=x, y=e, label='QSPR (this study)', 
+                marker ='D', edgecolor = 'red', facecolor = 'grey', alpha = 0.8, s=50)
+sns.scatterplot(data=df_kow, x=x, y=c, label='QSPR (Abraham 2002)', 
+                marker ='d', edgecolor = 'red', facecolor = 'none', alpha = 0.9, s=50)
+sns.scatterplot(data=df_kow, x=x, y=g, label='ADME', 
+                marker ='o', edgecolor = 'red', facecolor = 'none', alpha = 0.9, s=40)
+
+# sns.scatterplot(data=df_kow, x=x, y=f, label='HPLC (this study)', 
+#                 edgecolor = 'blue', facecolor = 'grey', marker = 's', alpha = 0.8, s=50)
+# sns.scatterplot(data=df_kow, x=x, y=d, label='Shake-Flask (this study)', 
+#                 edgecolor = 'blue', facecolor = 'grey', alpha = 0.8, s=50)
+# sns.scatterplot(data=df_kow, x=x, y=a, label='Shake-Flask (Vera 1991)', marker = '+', 
+#                 edgecolor = 'blue', facecolor = 'blue', alpha = 0.8, s=70)
+# sns.scatterplot(data=df_kow, x=x, y=b, label='Shake-Flask (Singer 1977)',
+#                 marker ='X', edgecolor = 'blue', facecolor = 'none', alpha = 0.8, s=50)
+
+
+
+
+
+
+plt.legend(fontsize = "10")
+# Add the 1:1 reference line
+plt.plot([-1, 2.6], [-1, 2.6], linestyle=':', color='gray', linewidth=2, label='1:1 line', alpha = 0.8, zorder=0)
+
+plt.ylim(-1,3.8)
+plt.xlim(-1,3)
+#plt.title('Determination Method Comparison')
+plt.xlabel('Shake-flask log $K_\mathrm{ow}$')
+plt.ylabel('log $K_\mathrm{ow}$')
+
+
+plt.grid(False)
+
+#save figure
+#plt.savefig('01_Computational_Comparison_withADME.svg', format='svg', bbox_inches='tight')
+plt.show()
+
+#%% Plot a comparison of all determination methods against average experimental logK
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Load the data and set the index to the compound name
+df_kow = pd.read_excel('Python_code_Kow_data.xlsx', sheet_name='Data').set_index('Unnamed: 0')
+
+x = 'Average Experimental Screened'
+
+plot_config = [
+    
+    {'col': 'Vera 1991', 'label': 'Shake-Flask (Vera 1991)', 'marker': '+', 'facecolor':'blue', 'edgecolor':'blue', 'linewidth': 1},
+    {'col': 'Singer 1977', 'label': 'Shake-Flask (Singer 1977)', 'marker': 'X', 'facecolor':'none', 'edgecolor':'blue', 'linewidth': 0.5},
+    {'col': 'This Study Experimental', 'label': 'Shake-Flask (this study)', 'marker': 'o', 'facecolor':'grey', 'edgecolor':'blue', 'linewidth': 0.5},
+    {'col': 'HPLC Estimates k40', 'label': 'HPLC (this study)', 'marker': 's', 'facecolor':'grey', 'edgecolor':'blue', 'linewidth': 0.5},
+    
+    # {'col': 'UFZ LSER', 'label': 'QSPR (this study)', 'marker': 'D', 'facecolor':'grey','edgecolor': 'red'},
+    # {'col': 'Abraham 2002', 'label': 'QSPR (Abraham 2002)', 'marker': 'd', 'facecolor':'none','edgecolor': 'red'},
+    # {'col': 'Ashworth COSMO-RS', 'label': 'COSMO-RS (Ashworth 2021)', 'marker': 'v', 'facecolor':'none', 'edgecolor': 'red'},
+    # {'col': 'COSMO-RS', 'label': 'COSMO-RS (this study)', 'marker': '^', 'facecolor':'grey', 'edgecolor': 'red'}   
+    
+]
+
+sns.set(rc = {'figure.figsize':(7,3.33),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+
+plt.figure(figsize=(7, 3.33))
+
+for config in plot_config:
+    # Plot all points except NMOR in black
+    sns.scatterplot(
+        data=df_kow,
+        x=x,
+        y=config['col'],
+        label=config['label'],
+        marker=config['marker'],
+        edgecolor=config['edgecolor'],
+        facecolor=config['facecolor'],
+        #linewidth = config['linewidth'],
+        s = 60,
+        alpha = 0.8,
+        legend=False
+    )
+    # Plot NMOR in red, on top, with same marker
+    # sns.scatterplot(
+    #     data=df_kow.loc[df_kow.index == 'NDMA'],
+    #     x=x,
+    #     y=config['col'],
+    #     marker=config['marker'],
+    #     edgecolor='black',
+    #     facecolor='red',
+    #     alpha = 0.5,
+    #     s=70,  # match marker size to main plot
+    #     legend=False
+    #)
+
+plt.plot([-1, 3.7], [-1, 3.7], linestyle=':', color='gray', linewidth=2, alpha = 0.5)
+plt.ylim(-1.1,3.8)
+plt.xlim(-1.1,3.8)
+
+plt.xlabel('Shake-flask $log K_{ow}$')
+plt.ylabel('$log K_{ow}$')
+#plt.title('Comparison of Determination Methods')
+plt.legend(fontsize = '10')
+plt.grid(False)
+
+#Change plot x and y limits
+#plt.ylim(0.9,2.75)
+#plt.xlim(0.9,2.75)
+plt.tight_layout()
+#plt.savefig('legend1.svg', format='svg', bbox_inches='tight')
+#plt.savefig('00_All_fullscale_NO HPLC.svg', format='svg', bbox_inches='tight')
+plt.show()
+
+#%% Calculate min and max log K differences across determinations
+
+
+# Select only the columns we want to include
+# Exclude 'Unnamed: 0' (compound names), 'Average Experimental Screened', and 'Average Experimental'
+cols_to_use = df_kow.columns.difference(['Average Experimental Screened', 'max_diff'])
+
+# Calculate max and min values for each row, skipping NaN values
+max_vals = df_kow[cols_to_use].max(axis=1, skipna=True)
+min_vals = df_kow[cols_to_use].min(axis=1, skipna=True)
+
+# Calculate the difference between max and min
+max_diff = max_vals - min_vals
+df_kow['max_diff'] = max_vals - min_vals
+
+# 2. Calculate max difference between experimental methods only
+experimental_cols = ['Vera 1991', 'This Study Experimental', 'Singer 1977']
+
+# Calculate max and min values for experimental methods, skipping NaN values
+max_exp = df_kow[experimental_cols].max(axis=1, skipna=True)
+min_exp = df_kow[experimental_cols].min(axis=1, skipna=True)
+
+# Calculate the difference between max and min for experimental methods
+max_diff_experimental = max_exp - min_exp
+
+# Create a new column in the dataframe
+df_kow['max_diff_experimental'] = max_diff_experimental
+ 
+# 3. Calculate max difference between estimated methods only
+estimated_cols = ['COSMO-RS', 'Ashworth COSMO-RS', 'Abraham 2002', "UFZ LSER"]
+
+# Calculate max and min values for experimental methods, skipping NaN values
+max_est = df_kow[estimated_cols].max(axis=1, skipna=True)
+min_est = df_kow[estimated_cols].min(axis=1, skipna=True)
+
+# Calculate the difference between max and min for experimental methods
+max_diff_estimated = max_est - min_est
+
+# Create a new column in the dataframe
+df_kow['max_diff_estimated'] = max_diff_estimated
+ 
+
+
+
+
+
+
+#%% print and plot differences
+
+print(max_diff)
+print(max_diff_experimental)
+print(max_diff_estimated)
+## plot bar chart of differences in logK
+
+nitrosamines = list(df_kow.index)
+max_diff_values = df_kow['max_diff']
+
+# Create bar chart
+plt.figure(figsize=(8, 4))
+plt.bar(nitrosamines, max_diff_values, color='gray')
+plt.xlabel('Nitrosamines')
+plt.ylabel('Log Unit Difference')
+plt.title('Differences in LogK Values for Nitrosamines')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+#%% create box plot of spread of data 
+
+
+
+# Select the experimental columns
+experimental_cols = ['This Study Experimental', 'Vera 1991', 'Singer 1977', 'HPLC Estimates k40']
+estimated_cols = ['COSMO-RS', 'Ashworth COSMO-RS', 'Abraham 2002', 'UFZ LSER', 'ADME']
+
+# Prepare data for boxplot: melt the dataframe to long format
+boxplot_data = df_kow.melt(id_vars=['Unnamed: 0'], value_vars=experimental_cols, 
+                           var_name='Method', value_name='LogK')
+boxplot_data.rename(columns={'Unnamed: 0': 'Nitrosamine'}, inplace=True)
+
+boxplot_data_estimated = df_kow.melt(id_vars=['Unnamed: 0'], value_vars=estimated_cols, 
+                           var_name='Method', value_name='LogK')
+boxplot_data_estimated.rename(columns={'Unnamed: 0': 'Nitrosamine'}, inplace=True)
+
+boxplot_data['type'] = 'Experimental'
+boxplot_data_estimated['type'] = 'Estimated'
+
+boxplot_spread = pd.concat([boxplot_data, boxplot_data_estimated])
+
+boxplot_spread = boxplot_spread.reset_index()
+#%%
+
+
+# Set plot style
+#sns.set(style="white")
+#plt.figure(figsize=(12, 6))
+
+custom_palette = {
+    'Experimental': 'blue',  # blue #1f77b4
+    'Estimated': 'red',  # red #d62728
+}
+
+
+
+sns.set(rc = {'figure.figsize':(7,3),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+
+# Create boxplot for experimental
+# sns.violinplot(x='Nitrosamine', y='LogK', data=boxplot_spread, hue = 'type',  palette = custom_palette,
+#                fill = False, split = False, gap = -0.1, cut = 0, density_norm = "count", linewidth = 0.5, linecolor = 'black')
+sns.boxplot(x='Nitrosamine', y='LogK', data=boxplot_spread, hue = 'type',  palette = custom_palette,
+               fill = False, gap = 0, linewidth = 1, linecolor = 'black', whis = (0,100))
+
+# sns.boxplot(x='Nitrosamine', y='LogK', data=boxplot_data_estimated)
+
+# Customize plot
+plt.legend(title = '')
+#plt.title('Spread of LogK Values')
+plt.ylabel('log $K_{ow}$')
+plt.xlabel('Nitrosamine')
+plt.ylim(-1.1,3.8)
+#plt.legend(title='Experimental Determination')
+plt.xticks(rotation=0)
+plt.grid(False)
+#plt.tight_layout()
+#plt.savefig('00_Boxplot_comparison_NO HPLC.svg', format='svg', bbox_inches='tight')
+plt.show()
+
+
+#%%
+
+# Set plot style
+#sns.set(style="white")
+#plt.figure(figsize=(12, 6))
+
+sns.set(rc = {'figure.figsize':(7,4),
+    'xtick.bottom': True,
+    'ytick.left': True,}, font_scale = 1.2, style = 'white')
+
+
+#create boxplot for estimated
+sns.boxplot(x='Nitrosamine', y='LogK', data=boxplot_spread, fliersize = 10)
+
+# Customize plot
+
+plt.ylabel('log $K_{ow}$')
+plt.xlabel('Nitrosamine')
+#plt.legend(title='Theoretical Determination')
+plt.xticks(rotation=0)
+plt.grid(False)
+plt.tight_layout()
+
+plt.savefig('00_Boxplot_ALL_kow_values.svg', format='svg', bbox_inches='tight')
+plt.show()
+
+
+#%% Data Comparisons using Bland Altman Analysis
+
+########## COMPARISONS RAW DATA ##########
+
+mdf2 = pd.ExcelFile("/Users/nbugher/MIT Dropbox/Nicolette Bugher/Plata Lab/Bugher/SRP/Chapter 4 (K estimation)/Python_code_Kow_data.xlsx")
+df_kow = pd.read_excel(mdf2,'Data')
+df_std_error =pd.read_excel(mdf2, 'Error')
+df_references = pd.read_excel(mdf2, 'hplc_references')
+df_nitros_test = pd.read_excel(mdf2, 'hplc_nitrosamines')
+df_ci_plots = pd.read_excel(mdf2,'hplc_ci')
+df_referencesk40 = pd.read_excel(mdf2, 'hplc_k40_references')
+df_nitrosaminesk40 = pd.read_excel(mdf2, 'nitrosamines_k40')
+#%% bland altman regression data
+ # change each col reference for mean and exp of each comparison of log differences
+
+
+df_logdifferences = pd.read_excel(mdf2, 'log differences')
+
+#df_logdifferences.dropna(subset=['mean Ashworth'], inplace=True)
+
+
+from scipy import stats
+x_diff = df_logdifferences['mean UFZ']
+y_diff = df_logdifferences['UFZ exp']
+# get coeffs of linear fit
+
+print('mean', y_diff.mean(), 'std dev', y_diff.std())
+slope, intercept, r_value, p_value, std_err = stats.linregress(x_diff,y_diff)
+
+
+print("slope:", slope, "intercept:", intercept, "r_sq:", r_value, "p:",p_value, "std err:",std_err)
+
+diff_data = pd.DataFrame({'x': x_diff, 'y': y_diff})
+
+model_diff = smf.ols('Co ~ Cw', data = NDBA_kow).fit()
+
+#%% Create experimenatl average and standard deviation
+
+
+
+# Columns to average
+cols_to_average = ['This Study Experimental', 'Vera 1991', 'Singer 1977']
+
+# Calculate average (mean) across the columns, skipping NaN
+df_kow['Average Experimental'] = df_kow[cols_to_average].mean(axis=1, skipna=True)
+
+# Calculate standard deviation across the columns, skipping NaN
+df_kow['Average Experimental StdDev'] = df_kow[cols_to_average].std(axis=1, skipna=True)
+
+# Display the relevant columns
+print(df_kow[['This Study Experimental', 'Vera 1991', 'Singer 1977', 
+              'Average Experimental']])
+#%% bland altman plot 
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.graphics.agreement import mean_diff_plot
+
+import pingouin as pg
+plt.rcParams.update({'font.size': 12})
+
+x = 'Average Experimental Screened'
+y = 'HPLC Estimates'
+z = 'HPLC Estimates k40'
+d = 'COSMO-RS'
+e = 'Ashworth COSMO-RS'
+f = 'Abraham 2002'
+g = 'UFZ LSER'
+a = 'Average Experimental'
+b = 'Vera 1991'
+c = 'Singer 1977'
+d = 'Baseline'
+e = 'All Avg'
+f = 'This Study Experimental'
+
+
+#df_kow.dropna(subset=['Vera 1991'], inplace=True)
+#df_kow.dropna(subset=['This Study Experimental'], inplace=True)
+#sns.set(font_scale=1)
+
+# # Create the Bland-Altman plot
+fig, ax = plt.subplots(1, figsize=(3.33, 3.33))
+# mean_diff_plot(df_kow['Average Experimental Screened'], df_kow['HPLC Estimates'], ax=ax)
+
+
+pg.plot_blandaltman(df_kow[g], df_kow[e], confidence = 0.95)
+
+
+
+
+# Add plot title and labels
+ax.set_xlabel('Average log $K_{ow}$', fontsize = 12)
+ax.set_ylabel('Log Difference Between Methods', fontsize = 12)
+#print(y)
+
+#plt.savefig('00_bland_altman_Abraham_to_this_Study QSPR.svg', format='svg', bbox_inches='tight')
+# Show the plot
+plt.show()
+
+#%% normality checks
+#new = df_kow.dropna(subset=['Ashworth COSMO-RS'], inplace=True)
+norm_test = df_kow['HPLC Estimates k40']
+
+norm_test_diff = x_diff
+
+ax_qq = pg.qqplot(norm_test_diff, dist='norm')
+plt.title(norm_test.name)
+plt.text(-1,1.5, "Q-Q Plot")
+#plt.savefig('QQ_test_ log differences of HPLC.pdf', format='pdf', bbox_inches='tight')
+plt.show()
